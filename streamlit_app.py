@@ -7,6 +7,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import shap  # Import SHAP library
 
+
 # Function to load the pre-trained Logistic Regression model
 def load_model():
     model = joblib.load('/workspaces/deadend/model/log_reg_82_model.joblib')
@@ -21,6 +22,46 @@ def make_prediction(model, data):
 def convert_predictions(predictions):
     return ["Churn" if pred == 1 else "No Churn" for pred in predictions]
 
+# Function to convert DataFrame to CSV for download
+def convert_df_to_csv(df):
+    return df.to_csv(index=False).encode('utf-8')
+
+# Function to suggest customer retention strategies
+def suggest_retention_strategies(data):
+    strategies = []
+
+    for index, row in data.iterrows():
+        if row['Churn'] == 'Churn':  # Only provide suggestions for customers predicted to churn
+            suggestion = f"Customer {index + 1}: "
+            
+            # Check contract type
+            if row['Contract_Month-to-month'] == 1:
+                suggestion += "Offer a longer-term contract with a discount. "
+            elif row['Contract_Two year'] == 1:
+                suggestion += "Highlight the benefits of staying with the two-year contract. "
+
+            # Check tenure (lower tenure customers are more likely to churn)
+            if row['tenure'] < 12:
+                suggestion += "Provide loyalty rewards to encourage them to stay longer. "
+            elif row['tenure'] > 36:
+                suggestion += "Send a personalized thank you for being a long-term customer. "
+
+            # Check payment method (electronic checks are associated with higher churn)
+            if row['PaymentMethod_Electronic check'] == 1:
+                suggestion += "Offer incentives to switch to automatic payment methods (bank transfer/credit card). "
+
+            # Gender-specific suggestions (optional, just to show different kinds of personalizations)
+            if row['gender'] == 1:  # Assuming 1 is male
+                suggestion += "Send personalized offers based on their past service usage. "
+            else:
+                suggestion += "Provide exclusive deals to maintain customer satisfaction. "
+            
+            # Add the completed suggestion
+            strategies.append(suggestion)
+
+    return strategies
+
+
 # Store the data in session state for persistence
 if "uploaded_data" not in st.session_state:
     st.session_state["uploaded_data"] = None
@@ -32,7 +73,7 @@ if "predicted_data" not in st.session_state:
 st.title("Customer Churn Prediction App")
 
 # Sidebar navigation
-page = st.sidebar.selectbox("Choose a page", ["CSV Upload", "Manual Data Entry", "Visualization","Explainable AI (XAI)"])
+page = st.sidebar.selectbox("Choose a page", ["CSV Upload", "Manual Data Entry", "Visualization", "Explainable AI (XAI)", "Customer Retention Suggestions", "3D Visualization"])
 
 # Load the model
 model = load_model()
@@ -58,6 +99,36 @@ if page == "CSV Upload":
             result_df['Churn'] = label_predictions
             st.session_state["predicted_data"] = result_df  # Store the result in session_state
             st.write("Predictions with Original Data:", result_df)
+
+            # Provide download link for the resulting DataFrame with predictions
+            csv_data = convert_df_to_csv(result_df)
+            st.download_button(
+                label="Download predictions as CSV",
+                data=csv_data,
+                file_name='predicted_churn.csv',
+                mime='text/csv',
+            )
+
+# Page 4: Customer Retention Suggestions
+elif page == "Customer Retention Suggestions":
+    st.header("Customer Retention Suggestions")
+
+    # Check if the predicted data is available
+    if st.session_state["predicted_data"] is not None:
+        data = st.session_state["predicted_data"]
+
+        # Generate retention suggestions
+        suggestions = suggest_retention_strategies(data)
+
+        # Display the suggestions
+        if suggestions:
+            for suggestion in suggestions:
+                st.write(suggestion)
+        else:
+            st.write("No retention suggestions available.")
+    else:
+        st.warning("Please upload data and make predictions first.")
+
 
 # Page 2: Manual Data Entry
 elif page == "Manual Data Entry":
@@ -272,3 +343,51 @@ elif page == "Explainable AI (XAI)":
 
     else:
         st.warning("Please upload data and ensure the model is available for SHAP explanation.")
+
+
+# Page 4: Customer Retention Suggestions
+elif page == "Customer Retention Suggestions":
+    st.header("Customer Retention Suggestions")
+
+    # Check if the predicted data is available
+    if st.session_state["predicted_data"] is not None:
+        data = st.session_state["predicted_data"]
+
+        # Generate retention suggestions
+        suggestions = suggest_retention_strategies(data)
+
+        # Display the suggestions
+        if suggestions:
+            for suggestion in suggestions:
+                st.write(suggestion)
+        else:
+            st.write("No retention suggestions available.")
+    else:
+        st.warning("Please upload data and make predictions first.")
+
+import plotly.express as px
+
+# Page for 3D Visualization
+if page == "3D Visualization":
+    st.header("3D Interactive Plot")
+
+    # Check if the uploaded data is available in session_state
+    if st.session_state["predicted_data"] is not None:
+        data = st.session_state["predicted_data"]
+
+        # Creating a 3D scatter plot
+        fig = px.scatter_3d(
+            data,
+            x='MonthlyCharges',  # Change these as per your dataset
+            y='TotalCharges',     # Change these as per your dataset
+            z='tenure',           # Change these as per your dataset
+            color='Churn',        # This will color the points by churn status
+            title='3D Scatter Plot of Monthly Charges, Total Charges, and Tenure',
+            labels={'Churn': 'Churn Status'},
+            color_continuous_scale=px.colors.sequential.Viridis
+        )
+
+        # Show the plot in the Streamlit app
+        st.plotly_chart(fig)
+    else:
+        st.warning("Please upload data first to see the 3D plot.")
